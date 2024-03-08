@@ -10,10 +10,12 @@ type Apko struct{}
 func (a *Apko) Build(
 	ctx context.Context,
 	source *Directory,
+	// +default="amd64"
+	arch string,
 	apkoFile *File,
 	// +optional
 	// default="packages"
-	packageAppend *Directory,
+	packagesAppend *Directory,
 	// +optional
 	keyringAppend *File,
 	image string,
@@ -25,14 +27,17 @@ func (a *Apko) Build(
 	if err != nil {
 		panic(err)
 	}
-	base := dag.Container().
+
+	cli := dag.Pipeline("apko-build")
+
+	base := cli.Container().
 		From("cgr.dev/chainguard/apko:latest")
 
-	execOpts := []string{"build", fmt.Sprintf("%s", f)}
+	execOpts := []string{"build", fmt.Sprintf("%s", f), fmt.Sprintf("--arch=%s", arch)}
 
-	if packageAppend != nil {
-		// execOpts = append(execOpts, "-p", fmt.Sprintf("%s", packageAppend))
-		base = base.WithMountedDirectory("/packages", packageAppend)
+	if packagesAppend != nil {
+		execOpts = append(execOpts, "-r", "./packages")
+		base = base.WithMountedDirectory("/workspace/packages", packagesAppend)
 	}
 
 	if keyringAppend != nil {
@@ -41,7 +46,7 @@ func (a *Apko) Build(
 			panic(err)
 		}
 		execOpts = append(execOpts, "-k", fmt.Sprintf("%s", kr))
-		base = base.WithMountedFile("/workspace", keyringAppend)
+		base = base.WithMountedFile("/workspace/melange.rsa.pub", keyringAppend)
 	}
 
 	if image != "" {
@@ -54,6 +59,8 @@ func (a *Apko) Build(
 	}
 
 	execOpts = append(execOpts, fmt.Sprintf("%s", tar))
+
+	fmt.Println("execOpts", execOpts)
 
 	return base.
 		WithMountedDirectory("/workspace", source).
